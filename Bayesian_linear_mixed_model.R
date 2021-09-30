@@ -202,3 +202,64 @@ fit_all <- brm(formula=log2(assay)|cens(cen1)~1+time*age10+time*sex+time*ethnici
                chains = 4, iter=4000, warmup = 2000, seed=42,inits=inits,
                init_r=10, control = list(adapt_delta=0.99,max_treedepth=20))
 
+
+############bi-exponential model
+
+df=df %>% 
+  mutate(time2=ifelse(time<=28,0,time-28)) %>% 
+  mutate(t1=(time<28)*time+(time>=28)*28,
+         t2=(time>=28)*(time-28))
+
+mean_assay=list(Intercept=8)
+inits<-list(mean_assay,mean_assay,mean_assay,mean_assay)
+
+priors=c(
+  set_prior("normal(7.5,1)",class="Intercept"),
+  set_prior("normal(0,0.1)",coef="t1",class="b"),
+  set_prior("normal(0,0.1)",coef="t2",class="b"),
+  set_prior("cauchy(0,0.01)",coef="t1",class="sd",group="ID"),
+  set_prior("cauchy(0,0.01)",coef="t2",class="sd",group="ID"),
+  set_prior("cauchy(0,1)",coef="Intercept",class="sd",group="ID"),
+  set_prior("cauchy(0,0.5)",class="sigma"),
+  set_prior("lkj_corr_cholesky(2)",class="L")
+)
+
+fit_bi<- brm(formula=log2(assay)|cens(cen1)~1+t1+t2+(1+t1+t2|ID),
+                 data=df,cores=4,family=gaussian(),
+                 prior =priors,
+                 chains = 4, iter=4000, warmup = 2000, seed=42,inits=inits,
+                 init_r=10, control = list(adapt_delta=0.99))
+
+
+#################spline model
+mean_assay=list(Intercept=8)
+inits<-list(mean_assay,mean_assay,mean_assay,mean_assay)
+
+priors=c(
+  set_prior("normal(7.4,2.8)",class="Intercept"),
+  set_prior("normal(0,0.1)",coef="nstimeknotsEQc3070Boundary.knotsEQc51101",class="b"),
+  set_prior("normal(0,0.1)",coef="nstimeknotsEQc3070Boundary.knotsEQc51102",class="b"),
+  set_prior("normal(0,0.1)",coef="nstimeknotsEQc3070Boundary.knotsEQc51103",class="b"),
+
+  set_prior("cauchy(0,0.01)",coef="nstimeknotsEQc3070Boundary.knotsEQc51101",class="sd",group="ID"),
+  set_prior("cauchy(0,0.5)",coef="nstimeknotsEQc3070Boundary.knotsEQc51102",class="sd",group="ID"),
+  set_prior("cauchy(0,0.5)",coef="nstimeknotsEQc3070Boundary.knotsEQc51103",class="sd",group="ID"),
+  set_prior("cauchy(0,1)",coef="Intercept",class="sd",group="ID"),
+  set_prior("cauchy(0,0.5)",class="sigma"),
+  set_prior("lkj_corr_cholesky(2)",class="L",group="ID")
+)
+
+fit_spline <- brm(formula=log2(assay)|cens(cen1)~
+                 1+ns(time,knots =c(30,70),Boundary.knots = c(5,110))+
+                 (1+ns(time,knots =c(30,70),Boundary.knots = c(5,110))|ID),
+               data=df,cores=4,family=gaussian(),prior = priors,
+               chains = 4, iter=4000, warmup = 2000, seed=42,inits=inits,
+               init_r=10, control = list(adapt_delta=0.95,max_treedepth=15))
+
+
+###########compare model fit
+loo=loo(fit)
+loo_spline=loo(fit_spline)
+loo_bi=loo(fit_bi)
+
+loo_compare(loo,loo_spline,loo_bi)
